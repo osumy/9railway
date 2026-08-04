@@ -364,6 +364,20 @@ def wait_online(domain: str, max_wait: int = 12) -> bool:
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+def ensure_volume_headroom():
+    """Delete any detached volumes and briefly wait for the deletion to land,
+    so new deploys aren't blocked by the free-plan 3-volume limit."""
+    vols = list_detached_volumes()
+    if not vols:
+        return
+    warn("cleaning detached volume(s) before deploy…")
+    for v in vols:
+        delete_volume(v)
+        log_step(f"   · deleted detached volume {v}")
+    # Railway processes volume deletion async — give it a short window
+    time.sleep(15)
+
+
 def cmd_up(n: int):
     settings = load_settings()
     password = settings["default_password"]
@@ -383,6 +397,11 @@ def cmd_up(n: int):
     log_step(f"\n   deploying {n} service(s)...")
     for i in range(1, n + 1):
         log_step(f"\n── service {i}/{n} ──")
+
+        # Free plan allows 3 volumes/project. Before each deploy, clear any
+        # detached volumes left behind by earlier service deletions.
+        ensure_volume_headroom()
+
         log_step(f"   · deploying template on Railway…")
         out = rail("deploy", "--template", "9router",
                    "-v", f"INITIAL_PASSWORD={password}",
@@ -503,6 +522,9 @@ def cmd_down(target: str):
     state["services"] = [s for s in state["services"] if s.get("service") != target]
     save_state(state)
     print("   ✅ removed from state.json")
+    # Service deletion leaves a detached volume behind — clean it up so it
+    # doesn't count toward the free-plan volume limit on the next deploy.
+    cmd_clean()
 
 def cmd_nuke():
     """Delete the ENTIRE project. Fixes stuck volumes / quota issues."""
