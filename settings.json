@@ -1,0 +1,5 @@
+{
+  "default_password": "MyPassword123456",
+  "combo_name": "claude-opus-5",
+  "model_id": "oc/deepseek-v4-flash-free"
+}

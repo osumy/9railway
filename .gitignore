@@ -1,0 +1,12 @@
+# secrets
+.railway-token
+
+# 9router source clone (for reference only)
+9router-repo/
+
+# python
+__pycache__/
+*.pyc
+
+# local runtime state (contains API keys — do NOT commit)
+state.json
