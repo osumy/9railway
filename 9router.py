@@ -11,12 +11,14 @@ Commands:
   keys                Show only API keys
   status              Live Railway status
   down [name|all]     Delete one service or all services (+ detached volumes)
+  nuke                Delete the ENTIRE project (fixes stuck volumes)
   clean               Delete detached volumes
   setpass <new>       Change default dashboard password
+  config              Show current settings
+  test <name>         Send a real request to a service (verifies it works)
+  token               Show token status / refresh instructions
   reset               Clear state.json (services untouched)
-
-Config : settings.json  (default_password, combo_name, model_id)
-State  : state.json     (per-service url / api_key / combo / model)
+  help                Show this help
 """
 
 import json
@@ -38,6 +40,8 @@ STATE_FILE = DIR / "state.json"
 TOKEN_FILE = DIR / ".railway-token"
 RAILWAY_CONFIG = Path.home() / ".railway" / "config.json"
 
+PROJECT_NAME = "9router"
+
 DEFAULT_SETTINGS = {
     "default_password": "MyPassword123456",
     "combo_name": "claude-opus-5",
@@ -47,11 +51,28 @@ DEFAULT_SETTINGS = {
 _RAILWAY = None  # cached resolved railway binary
 
 # ---------------------------------------------------------------------------
-# Small helpers
+# Output helpers
 # ---------------------------------------------------------------------------
 def eprint(*a):
     print(*a, file=sys.stderr)
 
+def banner(title: str):
+    print("\n" + "═" * 52)
+    print(f"  {title}")
+    print("═" * 52)
+
+def ok(msg: str):
+    print(f"  ✅ {msg}")
+
+def warn(msg: str):
+    print(f"  ⚠️  {msg}")
+
+def fail(msg: str):
+    print(f"  ❌ {msg}")
+
+# ---------------------------------------------------------------------------
+# Settings & state
+# ---------------------------------------------------------------------------
 def ensure_settings():
     if not SETTINGS_FILE.exists():
         SETTINGS_FILE.write_text(json.dumps(DEFAULT_SETTINGS, indent=2), encoding="utf-8")
@@ -62,7 +83,7 @@ def load_settings() -> dict:
         return json.load(f)
 
 def save_settings(s: dict):
-    SETTINGS_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
+    SETTINGS_FILE.write_text(json.dumps(s, indent=2, ensure_ascii=False), encoding="utf-8")
 
 def ensure_state():
     if not STATE_FILE.exists():
@@ -76,56 +97,8 @@ def load_state() -> dict:
 def save_state(s: dict):
     STATE_FILE.write_text(json.dumps(s, indent=2, ensure_ascii=False), encoding="utf-8")
 
-def find_railway() -> str:
-    """Locate the railway CLI binary: .cmd on Windows (npm shim), plain on Unix."""
-    # 1) check PATH
-    for cand in (["railway.cmd", "railway"] if os.name == "nt" else ["railway"]):
-        try:
-            r = subprocess.run([cand, "--version"], capture_output=True, text=True, timeout=15)
-            if r.returncode == 0:
-                return cand
-        except Exception:
-            continue
-    # 2) npm global dir fallback
-    for base in (Path(os.environ.get("APPDATA", "")) / "npm",
-                 Path.home() / ".npm-global", Path.home() / ".local" / "bin"):
-        for cand in (["railway.cmd", "railway"] if os.name == "nt" else ["railway"]):
-            exe = base / cand
-            if exe.exists():
-                return str(exe)
-    return "railway"
-
-def rail(*args, check=True) -> subprocess.CompletedProcess:
-    """Run the railway CLI. Returns completed process (stdout captured)."""
-    global _RAILWAY
-    if not _RAILWAY:
-        _RAILWAY = find_railway()
-    try:
-        p = subprocess.run([_RAILWAY, *args], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=180)
-    except FileNotFoundError:
-        eprint("❌ railway CLI not found. Install: npm i -g @railway/cli  (or see README)")
-        sys.exit(1)
-    except subprocess.TimeoutExpired:
-        eprint("⏱️  railway CLI timed out.")
-        sys.exit(1)
-    if check and p.returncode != 0:
-        eprint(f"⚠️  railway {' '.join(args)} failed:\n{p.stdout}\n{p.stderr}")
-        return p
-    return p
-
-def rail_json(*args):
-    p = rail(*args, check=False)
-    out = p.stdout.strip()
-    if not out:
-        return None
-    try:
-        return json.loads(out)
-    except json.JSONDecodeError:
-        return None
-
 # ---------------------------------------------------------------------------
-# Token handling — cross-platform, from railway config or .railway-token
+# Token handling — cross-platform
 # ---------------------------------------------------------------------------
 def get_token() -> str:
     """Return a usable Railway token: .railway-token file, or the accessToken
@@ -145,6 +118,55 @@ def get_token() -> str:
     eprint("❌ No Railway token found.")
     eprint("   Run `railway login` once, or put your token in .railway-token")
     sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Railway CLI wrapper
+# ---------------------------------------------------------------------------
+def find_railway() -> str:
+    """Locate the railway CLI binary: .cmd on Windows (npm shim), plain on Unix."""
+    for cand in (["railway.cmd", "railway"] if os.name == "nt" else ["railway"]):
+        try:
+            r = subprocess.run([cand, "--version"], capture_output=True, text=True, timeout=15)
+            if r.returncode == 0:
+                return cand
+        except Exception:
+            continue
+    for base in (Path(os.environ.get("APPDATA", "")) / "npm",
+                 Path.home() / ".npm-global", Path.home() / ".local" / "bin"):
+        for cand in (["railway.cmd", "railway"] if os.name == "nt" else ["railway"]):
+            exe = base / cand
+            if exe.exists():
+                return str(exe)
+    return "railway"
+
+def rail(*args, check=True) -> subprocess.CompletedProcess:
+    """Run the railway CLI. Returns completed process (stdout captured)."""
+    global _RAILWAY
+    if not _RAILWAY:
+        _RAILWAY = find_railway()
+    try:
+        p = subprocess.run([_RAILWAY, *args], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=180)
+    except FileNotFoundError:
+        eprint("❌ railway CLI not found. Install: npm i -g @railway/cli")
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        eprint("⏱️  railway CLI timed out.")
+        sys.exit(1)
+    if check and p.returncode != 0:
+        eprint(f"⚠️  railway {' '.join(args)} failed:\n{p.stdout}\n{p.stderr}")
+        return p
+    return p
+
+def rail_json(*args):
+    p = rail(*args, check=False)
+    out = p.stdout.strip()
+    if not out:
+        return None
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        return None
 
 # ---------------------------------------------------------------------------
 # HTTP helpers (for the 9router dashboard API)
@@ -188,7 +210,7 @@ def login_get_cookie(domain: str, password: str, retries: int = 3):
 # ---------------------------------------------------------------------------
 # Railway project / service helpers
 # ---------------------------------------------------------------------------
-def find_project(name: str = "9router"):
+def find_project(name: str = PROJECT_NAME):
     d = rail_json("project", "list", "--json")
     if not isinstance(d, list):
         return None
@@ -197,7 +219,7 @@ def find_project(name: str = "9router"):
             return p["id"]
     return None
 
-def create_project(name: str = "9router"):
+def create_project(name: str = PROJECT_NAME):
     ws = None
     d = rail_json("project", "list", "--json")
     if isinstance(d, list) and d:
@@ -220,7 +242,6 @@ def service_domain(project_id: str, service_name: str):
                   "--environment", "production", "--json")
     if isinstance(d, dict) and d.get("domains"):
         return d["domains"][0].get("domain", "")
-    # fallback: text output
     p = rail("domain", "list", "--project", project_id, "--service", service_name,
              "--environment", "production", check=False)
     m = re.search(r"https?://([\w.-]+\.railway\.app)", p.stdout)
@@ -318,27 +339,26 @@ def cmd_up(n: int):
     settings = load_settings()
     password = settings["default_password"]
 
-    project_id = find_project("9router")
+    project_id = find_project(PROJECT_NAME)
     if project_id:
-        print(f"   ✅ project '9router' exists: {project_id}")
+        ok(f"project '{PROJECT_NAME}' exists: {project_id}")
     else:
-        print("   project '9router' not found → creating...")
-        project_id = create_project("9router")
-        print(f"   ✅ project created: {project_id}")
+        print(f"   project '{PROJECT_NAME}' not found → creating...")
+        project_id = create_project(PROJECT_NAME)
+        ok(f"project created: {project_id}")
 
     if not project_id:
-        eprint("   ❌ could not create/find project")
+        fail("could not create/find project")
         sys.exit(1)
 
     print(f"\n   deploying {n} service(s)...")
     for i in range(1, n + 1):
         print(f"\n── service {i}/{n} ──")
-        # deploy (retry once if volume limit)
         out = rail("deploy", "--template", "9router",
                    "-v", f"INITIAL_PASSWORD={password}",
                    "-v", "DATA_DIR=/app/data", check=False)
         if "limit exceeded" in out.stdout or "3 volumes" in out.stdout:
-            print("   ⚠️  volume limit → cleaning detached volumes, retrying...")
+            warn("volume limit → cleaning detached volumes, retrying...")
             cmd_clean()
             time.sleep(30)
             out = rail("deploy", "--template", "9router",
@@ -353,7 +373,7 @@ def cmd_up(n: int):
             if svc:
                 break
         if not svc:
-            eprint("   ❌ could not find newly created service")
+            fail("could not find newly created service")
             continue
         print(f"   service: {svc}")
 
@@ -365,21 +385,19 @@ def cmd_up(n: int):
                 break
             time.sleep(10)
         if not domain:
-            eprint(f"   ❌ no domain for {svc}")
+            fail(f"no domain for {svc}")
             continue
 
         configure_service(project_id, svc, password)
 
-    print("\n" + "═" * 50)
-    print(f"  ✅ {n} service(s) processed. See:  python 9router.py list")
-    print("═" * 50)
+    banner(f"✅ {n} service(s) processed. See:  python 9router.py list")
 
 def cmd_sync():
     settings = load_settings()
     password = settings["default_password"]
-    project_id = find_project("9router")
+    project_id = find_project(PROJECT_NAME)
     if not project_id:
-        eprint("   ❌ project '9router' not found. Run: python 9router.py up")
+        fail(f"project '{PROJECT_NAME}' not found. Run: python 9router.py up")
         return
     print(f"   configuring existing services in {project_id}...")
     for sid, name in list_services(project_id):
@@ -422,7 +440,7 @@ def cmd_clean():
     print("   ✅ detached volumes queued for deletion")
 
 def cmd_down(target: str):
-    project_id = find_project("9router")
+    project_id = find_project(PROJECT_NAME)
     state = load_state()
 
     if target == "all":
@@ -451,11 +469,87 @@ def cmd_down(target: str):
     save_state(state)
     print("   ✅ removed from state.json")
 
+def cmd_nuke():
+    """Delete the ENTIRE project. Fixes stuck volumes / quota issues."""
+    print("   ⚠️  NUKE: this deletes the whole '9router' project (all services, volumes, data)!")
+    project_id = find_project(PROJECT_NAME)
+    if not project_id:
+        print("   (no '9router' project found — nothing to nuke)")
+        return
+    print(f"   deleting project {project_id}...")
+    rail("project", "delete", "--project", project_id, "--yes", "--json", check=False)
+    # clear state too
+    save_state({"services": []})
+    print("   ✅ project deleted, state cleared")
+    print("   Next `up` will recreate everything fresh.")
+
 def cmd_setpass(new: str):
     settings = load_settings()
     settings["default_password"] = new
     save_settings(settings)
     print(f"   ✅ default password changed to {new} (applies to new services)")
+
+def cmd_config():
+    settings = load_settings()
+    print(json.dumps(settings, indent=2, ensure_ascii=False))
+    print(f"\n  settings file: {SETTINGS_FILE}")
+
+def cmd_test(name: str):
+    """Send a real request to a saved service."""
+    state = load_state()
+    target = name
+    if not target:
+        # pick first
+        svcs = state.get("services", [])
+        if not svcs:
+            fail("no services in state — run `up` first")
+            return
+        target = svcs[0]["service"]
+        print(f"   (no name given, using first: {target})")
+
+    entry = next((s for s in state.get("services", []) if s.get("service") == target), None)
+    if not entry:
+        fail(f"service '{target}' not in state. Use: python 9router.py list")
+        return
+
+    url = entry["url"].rstrip("/") + "/v1/chat/completions"
+    key = entry.get("api_key", "")
+    print(f"   testing {target} @ {url}")
+    print(f"   sending: 'Say OK' (model: {entry.get('combo')})...")
+
+    payload = json.dumps({
+        "model": entry.get("combo", "claude-opus-5"),
+        "messages": [{"role": "user", "content": "Say OK"}],
+        "max_tokens": 50,
+    }).encode()
+    req = urllib.request.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Authorization", f"Bearer {key}")
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            body = resp.read().decode("utf-8", "replace")
+            data = json.loads(body.split("data: [DONE]")[0])
+            msg = data["choices"][0]["message"]
+            content = msg.get("content", "") or ""
+            reasoning = msg.get("reasoning_content", "") or ""
+            cost = data.get("cost", "?")
+            print(f"   ✅ {target} works! model={data.get('model')} cost={cost}")
+            if content:
+                print(f"      reply: {content[:120]}")
+            else:
+                print(f"      (reasoning-only reply; max_tokens too low? reasoning: {reasoning[:80]}...)")
+    except urllib.error.HTTPError as e:
+        fail(f"{target} returned HTTP {e.code}: {e.read().decode('utf-8','replace')[:200]}")
+    except Exception as e:
+        fail(f"{target} error: {e}")
+
+def cmd_token():
+    tok = get_token()
+    masked = tok[:8] + "..." + tok[-4:] if len(tok) > 12 else "***"
+    print(f"  Railway token: {masked}")
+    print(f"  source: {TOKEN_FILE if TOKEN_FILE.exists() else RAILWAY_CONFIG}")
+    print("  To refresh: run `railway login`, then:")
+    print("    python -c \"import json,pathlib; print(json.load(open(str(pathlib.Path.home()/'.railway'/'config.json')))['user']['accessToken'])\" > .railway-token")
 
 def cmd_reset():
     save_state({"services": []})
@@ -487,10 +581,18 @@ def main():
         cmd_status()
     elif cmd == "down":
         cmd_down(arg)
+    elif cmd == "nuke":
+        cmd_nuke()
     elif cmd == "clean":
         cmd_clean()
     elif cmd == "setpass":
         cmd_setpass(arg)
+    elif cmd == "config":
+        cmd_config()
+    elif cmd == "test":
+        cmd_test(arg)
+    elif cmd == "token":
+        cmd_token()
     elif cmd == "reset":
         cmd_reset()
     else:
