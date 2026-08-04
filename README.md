@@ -1,47 +1,86 @@
-# 9Router CLI — Railway Auto-Deployer
+# railway-9router-cli
 
-A bash CLI that fully automates deploying and managing [9Router](https://github.com/decolua/9router) (self-hosted AI gateway) services on [Railway](https://railway.com) — from project creation to ready-to-use API keys.
+**Auto-deploy and manage 9Router — the self-hosted AI gateway — on Railway, from your terminal or browser.**
 
-## What it does
+Deploy a fleet of 9Router services, configure each one automatically (model → combo → API key), keep their credentials in one place, and tear them down when you're done. One tool, three interfaces.
 
-One tool that:
-- Ensures a Railway project named `9router` exists (creates it if missing)
-- Deploys **N services** in parallel into that project
-- Auto-configures **each service** (login → add model → create combo → create API key)
-- Saves everything (`URL`, `API key`, combo, model) into `state.json`
-- Lets you manage them: list, show keys, delete one or all
+---
+
+## Why this exists
+
+Manually deploying 9Router on Railway means clicking through the same flow every time:
+create project → deploy template → set password → open dashboard → add model → build combo → create API key.
+
+This tool automates the whole loop and **persists everything** — service URLs, API keys, combos — in a single `state.json`.
+
+---
+
+## Features
+
+- 🚀 **One-command deploy** — `up N` creates the project if needed, deploys N services in parallel, and auto-configures each one
+- 🔑 **Auto API keys** — every service gets a ready-to-use `sk-...` key, saved to `state.json`
+- 🧩 **Combos included** — the model (e.g. `oc/deepseek-v4-flash-free`) is wired into a combo (e.g. `claude-opus-5`) automatically
+- 💾 **Volume persistence** — the SQLite database lives on a Railway volume, so data survives redeploys
+- 🧹 **Full lifecycle** — list, test, delete one/all, clean stuck volumes, or nuke the whole project
+- 🖥️ **Three interfaces** — CLI, interactive terminal menu (TUI), and a local web dashboard
+- 🐍 **Cross-platform** — pure Python 3.8+ (no bash, no external deps), works on Windows / Linux / macOS
+
+---
 
 ## Quick start
 
 ```bash
-# One-time setup
-railway login
-# put your token in .railway-token (git-ignored) or export RAILWAY_API_TOKEN
+# 1. One-time setup
+railway login                         # Railway account
+python 9router.py help                # see all commands
 
-# Deploy 3 services, all auto-configured
-bash 9router-cli.sh up 3
+# 2. Deploy 2 services (auto-configured)
+python 9router.py up 2
 
-# See what you have (URLs + API keys)
-bash 9router-cli.sh list
+# 3. See what you got
+python 9router.py list
+python 9router.py keys
 
-# Show only the API keys
-bash 9router-cli.sh keys
+# 4. Use the endpoint anywhere (OpenAI-compatible)
+#    Base URL : https://<service>.up.railway.app/v1
+#    API key  : sk-...
+#    Model    : claude-opus-5
 ```
 
-## Commands
+---
+
+## Interfaces
+
+### 1. CLI — `python 9router.py <command>`
 
 | Command | What it does |
 |---|---|
 | `up [N]` | Deploy N new services (default 1), auto-configure each, save to state |
 | `sync` | Re-configure existing services in the project (no new deploy) |
-| `list` | Show saved services (URL + API key + combo) |
+| `list` | Show saved services (URL + API key + combo + model) |
 | `keys` | Show only API keys |
 | `status` | Live Railway status (services, volumes) |
-| `down [name\|all]` | Delete one service (by name) or all of them |
+| `test [name]` | Send a real request to a service and verify it replies |
+| `down [name\|all]` | Delete one service or all of them (+ detached volumes) |
+| `nuke` | Delete the **entire** project — fixes stuck volumes / quota issues |
+| `clean` | Delete detached volumes |
 | `setpass <new>` | Change the default dashboard password |
+| `config` | Show current settings |
+| `token` | Show token status + refresh instructions |
 | `reset` | Clear `state.json` (services are NOT touched) |
+| `help` | Show help |
 
-## Config & state
+### 2. TUI — `python 9router-tui.py`
+
+Interactive numbered menu (0–13). Same commands, guided flow, confirmation prompts for destructive actions. No extra dependencies.
+
+### 3. Web — `python 9router-web.py`
+
+Local dashboard at **http://localhost:8989** — dark theme, service cards with copy-able keys, one-click deploy/test/delete/nuke, live output console. Pure stdlib (`http.server`), no deps.
+
+---
+
+## Configuration
 
 **`settings.json`** — created automatically on first run:
 
@@ -53,9 +92,11 @@ bash 9router-cli.sh keys
 }
 ```
 
-Change the dashboard password with `setpass`, or edit the file directly.
+- `default_password` — dashboard login password for new services (change with `setpass`)
+- `combo_name` — the combo created on each service
+- `model_id` — the model wired into that combo (`<provider-alias>/<model-id>`)
 
-**`state.json`** — the source of truth for your deployed services:
+**`state.json`** — the source of truth (NOT committed to git):
 
 ```json
 {
@@ -66,45 +107,77 @@ Change the dashboard password with `setpass`, or edit the file directly.
       "api_key": "sk-...",
       "combo": "claude-opus-5",
       "model": "oc/deepseek-v4-flash-free",
-      "created": "2026-08-04T17:37:28Z",
+      "created": "2026-08-04T18:01:53Z",
       "project_id": "..."
     }
   ]
 }
 ```
 
+---
+
 ## How the auto-configuration works
 
-For each deployed service, the script:
-1. Logs in to the dashboard with `default_password`
-2. Adds the model via `POST /api/models/custom`
-3. Creates the combo via `POST /api/combos`
-4. Creates an API key via `POST /api/keys`
-5. Saves everything to `state.json`
+For each deployed service the tool:
 
-Verified working end-to-end (real requests returned `cost: 0`).
+1. Deploys the Railway template `9router` with `INITIAL_PASSWORD` + `DATA_DIR=/app/data`
+2. Waits for the service to come online (health check)
+3. Logs in to the dashboard → captures the session cookie
+4. Adds the custom model (`POST /api/models/custom`)
+5. Creates the combo (`POST /api/combos`)
+6. Creates an API key (`POST /api/keys`)
+7. Saves URL + key + combo to `state.json`
 
-## Usage notes
+All verified end-to-end against live services (`cost: 0` replies).
 
-- **Token refresh**: if `RAILWAY_API_TOKEN` expires, re-run `railway login` and copy the fresh access token from `~/.railway/config.json` into `.railway-token`.
-- **Volume persistence**: the DB (providers, combos, keys) lives on a Railway volume — data survives redeploys.
-- **Reasoning models**: `oc/deepseek-v4-flash-free` is a reasoning model — use `max_tokens` ≥ 300 so answers don't get truncated (it spends tokens "thinking" first).
+---
 
-## Example usage
+## Notes & troubleshooting
 
-```bash
-# Deploy 3 services
-bash 9router-cli.sh up 3
+### Token
+- Auth uses the Railway access token from `.railway-token`, or falls back to `~/.railway/config.json` (written by `railway login`).
+- When the token expires (`Unauthorized` errors), refresh it:
+  ```bash
+  railway login
+  python -c "import json,pathlib; print(json.load(open(str(pathlib.Path.home()/'.railway'/'config.json')))['user']['accessToken'])" > .railway-token
+  ```
 
-# List them
-bash 9router-cli.sh list
+### Volume limits (free plan)
+- Railway free plan allows **3 volumes per project**. After repeated deploy/delete cycles, detached volumes can linger and block new deploys.
+- Fix: `python 9router.py clean` (deletes detached volumes) or `python 9router.py nuke` (deletes the whole project — everything is recreated on next `up`).
 
-# Test one with curl
-curl -X POST "https://YOUR-SERVICE.up.railway.app/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-YOUR-KEY" \
-  -d '{"model":"claude-opus-5","messages":[{"role":"user","content":"سلام"}],"max_tokens":300}'
+### Reasoning models
+- `oc/deepseek-v4-flash-free` is a reasoning model — it "thinks" before answering. Use `max_tokens` ≥ 300 in your requests or the reply may be truncated.
 
-# Delete everything
-bash 9router-cli.sh down all
+### Security
+- `.railway-token` and `state.json` (contains API keys) are git-ignored. Don't commit them.
+- The dashboard password in `settings.json` is local-only; change it with `setpass` or by editing the file.
+
+---
+
+## Project layout
+
 ```
+railway-9router-cli/
+├── 9router.py        # core CLI (all commands, cross-platform)
+├── 9router-tui.py    # interactive terminal menu
+├── 9router-web.py    # local web dashboard server
+├── web/
+│   └── index.html    # dashboard frontend (external file)
+├── settings.json     # config (auto-created, committed template)
+├── state.json        # runtime state — service URLs/keys (git-ignored)
+├── .railway-token    # your Railway token (git-ignored)
+└── README.md
+```
+
+---
+
+## Roadmap
+
+- [x] Modular Python CLI core
+- [x] Interactive terminal menu (TUI)
+- [x] Local web dashboard
+- [x] Polished web UI (external HTML, dark theme)
+- [ ] GitHub Actions CI (lint + smoke test)
+- [ ] Packaging via `pip install`
+- [ ] Multi-project support
