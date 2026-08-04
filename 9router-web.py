@@ -32,6 +32,9 @@ PORT = 8989
 # ---------------------------------------------------------------------------
 def run_cmd(args, timeout=300):
     """Run a core command in a subprocess, return (ok, output)."""
+    # If the stored token looks stale, refresh it from `railway login`'s config
+    # before spawning the subprocess — avoids confusing "Unauthorized" errors.
+    _refresh_stale_token()
     try:
         p = subprocess.run(
             [sys.executable, str(CORE), *args],
@@ -44,6 +47,41 @@ def run_cmd(args, timeout=300):
         return False, "⏱️  timeout — command took too long"
     except Exception as e:
         return False, f"error: {e}"
+
+
+RAILWAY_CFG = Path.home() / ".railway" / "config.json"
+
+
+def _refresh_stale_token():
+    """If .railway-token is missing or doesn't auth, pull the fresh accessToken
+    from ~/.railway/config.json (written by `railway login`)."""
+    try:
+        # quick probe: does the stored token work at all?
+        if TOKEN_FILE.exists():
+            tok = TOKEN_FILE.read_text(encoding="utf-8").strip()
+            if tok:
+                import urllib.request as _ur
+                probe = _ur.Request(f"https://api.railway.com/graphql/v2",
+                                    data=b'{"query":"{ __typename }"}',
+                                    headers={"Authorization": f"Bearer {tok}",
+                                             "Content-Type": "application/json"})
+                try:
+                    with _ur.urlopen(probe, timeout=6) as resp:
+                        if resp.status == 200:
+                            return  # token is fine, keep it
+                except Exception:
+                    pass  # fall through and refresh
+        # pull fresh accessToken from railway login config
+        if RAILWAY_CFG.exists():
+            try:
+                cfg = json.loads(RAILWAY_CFG.read_text(encoding="utf-8"))
+                fresh = (cfg.get("user") or {}).get("accessToken", "").strip()
+                if fresh:
+                    TOKEN_FILE.write_text(fresh, encoding="utf-8")
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def read_state():
