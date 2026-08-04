@@ -1,0 +1,9 @@
+# railway-9router-cli — Python requirements
+#
+# NOTE: the tool uses ONLY the Python standard library —
+# no third-party packages are required to run it.
+#
+# Minimum tested version: Python 3.10  (developed & tested on 3.14)
+# Works with anything >= 3.10 (f-strings, pathlib, http.server, etc.)
+#
+# This file exists so tooling (pip, pyenv, CI) has an explicit marker.

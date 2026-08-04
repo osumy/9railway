@@ -27,6 +27,16 @@ This tool automates the whole loop and **persists everything** — service URLs,
 
 ---
 
+## Prerequisites
+
+- **Python 3.10+** (developed and tested on 3.14) — the tool uses **only the standard library**, so `pip install` is not needed. See [`requirements.txt`](requirements.txt) for the explicit marker.
+- **Railway CLI** — `npm i -g @railway/cli`, then `railway login` once.
+
+```bash
+python --version   # >= 3.10
+railway --version  # works
+```
+
 ## Quick start
 
 ```bash
@@ -164,6 +174,7 @@ railway-9router-cli/
 ├── 9router-web.py    # local web dashboard server
 ├── web/
 │   └── index.html    # dashboard frontend (external file)
+├── requirements.txt  # explicit Python marker (stdlib-only — nothing to install)
 ├── settings.json     # config (auto-created, committed template)
 ├── state.json        # runtime state — service URLs/keys (git-ignored)
 ├── .railway-token    # your Railway token (git-ignored)
