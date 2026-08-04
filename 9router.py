@@ -565,6 +565,20 @@ def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "help"
     arg = sys.argv[2] if len(sys.argv) > 2 else ""
 
+    # Commands that don't need Railway at all
+    if cmd in ("help", "--help", "-h", "reset", "list", "keys", "config"):
+        if cmd == "help" or cmd in ("--help", "-h"):
+            cmd_help()
+        elif cmd == "reset":
+            cmd_reset()
+        elif cmd == "list":
+            cmd_list()
+        elif cmd == "keys":
+            cmd_keys()
+        elif cmd == "config":
+            cmd_config()
+        return
+
     # make token available to railway subprocesses (cross-platform)
     os.environ["RAILWAY_API_TOKEN"] = get_token()
 
