@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚀 9railway
+# 🚀 9Railway
 
 **Auto-deploy and manage [9Router](https://github.com/decolua/9router) AI gateway services on Railway — from your terminal or browser.**
 
@@ -158,7 +158,7 @@ All verified end-to-end against live services (`cost: 0` replies).
 ## 📁 Project layout
 
 ```
-9railway/
+9Railway/
 ├── 9router.py        # core CLI (all commands, cross-platform)
 ├── 9router-web.py    # local web dashboard server (auth-aware)
 ├── web/

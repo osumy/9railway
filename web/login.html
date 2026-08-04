@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>9railway — Login</title>
+<title>9Railway — Login</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <style>
   :root {
@@ -37,7 +37,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 36px;
-    width: 100%; max-width: 420px;
+    width: 100%; max-width: 440px;
     box-shadow: var(--glow);
   }
   .logo {
@@ -46,81 +46,107 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 26px; margin-bottom: 18px;
   }
-  h1 { font-size: 20px; margin-bottom: 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; line-height: 1.5; }
-  label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .6px; }
-  textarea, input {
-    width: 100%;
-    background: #0b0e16; border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px; color: var(--text); font-size: 13px; outline: none;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-    resize: vertical;
-  }
-  textarea:focus, input:focus { border-color: var(--accent); }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; line-height: 1.6; }
   .btn {
-    width: 100%; margin-top: 16px;
+    width: 100%;
     background: linear-gradient(135deg, #6c8cff, #5a6ff0);
     color: white; border: none; border-radius: 10px;
-    padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;
-    transition: filter .15s ease;
+    padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: filter .15s ease, transform .1s ease;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .btn:hover { filter: brightness(1.1); }
-  .hint { margin-top: 16px; font-size: 12px; color: var(--muted); line-height: 1.6; }
-  .hint a { color: var(--accent2); text-decoration: none; }
-  .hint a:hover { text-decoration: underline; }
-  .msg { margin-top: 12px; font-size: 13px; min-height: 18px; }
+  .btn:active { transform: scale(.99); }
+  .btn:disabled { opacity: .6; cursor: wait; }
+  .why { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .why summary { color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; }
+  .why summary:hover { color: var(--accent2); }
+  .why p { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 10px; }
+  .why b { color: var(--text); }
+  .msg { margin-top: 14px; font-size: 13px; min-height: 18px; text-align: center; }
   .msg.ok { color: var(--green); }
   .msg.err { color: var(--red); }
-  .steps { margin-top: 8px; font-size: 12px; color: var(--muted); line-height: 1.7; padding-left: 18px; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 <div class="card">
   <div class="logo">🚀</div>
-  <h1>9railway</h1>
-  <div class="sub">Connect your Railway account to manage 9Router services.</div>
+  <h1>9Railway</h1>
+  <div class="sub">Connect your Railway account to manage your 9Router services.</div>
 
-  <label>How to get a token</label>
-  <ol class="steps">
-    <li>Open <a href="https://railway.com/account/tokens" target="_blank" rel="noopener">railway.com/account/tokens</a></li>
-    <li>Click <b>Generate Token</b> → give it a name → <b>Create</b></li>
-    <li>Copy the token and paste it below</li>
-  </ol>
-
-  <textarea id="token" rows="3" placeholder="paste railway token here…"></textarea>
-  <button class="btn" id="connect">Connect</button>
+  <button class="btn" id="connect">
+    <span id="btnlabel">Connect with Railway</span>
+  </button>
 
   <div class="msg" id="msg"></div>
+
+  <details class="why">
+    <summary>Why do I need to sign in?</summary>
+    <p>
+      <b>9Railway</b> works with your own Railway account — it deploys and manages
+      <b>your</b> 9Router services using <b>your</b> project space.
+    </p>
+    <p>
+      Signing in lets the tool create projects and services on your behalf,
+      so everything (API keys, service URLs) is stored on <b>your</b> side.
+    </p>
+    <p>
+      You'll be taken to <b>Railway's official sign-in page</b> in a new tab.
+      We never see your Railway password. When you approve, we only receive
+      a scoped token that can manage <i>your own projects</i> — nothing else.
+    </p>
+  </details>
 </div>
 
 <script>
 const btn = document.getElementById('connect');
 const msg = document.getElementById('msg');
-const ta = document.getElementById('token');
+const lbl = document.getElementById('btnlabel');
 
 btn.addEventListener('click', async () => {
-  const token = ta.value.trim();
-  if (!token) { msg.className = 'msg err'; msg.textContent = 'Paste a token first.'; return; }
-  msg.className = 'msg'; msg.textContent = 'Connecting…';
+  msg.className = 'msg'; msg.textContent = '';
+  btn.disabled = true;
+  lbl.innerHTML = '<span class="spinner"></span> Opening Railway…';
   try {
-    const r = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token })
-    });
+    const r = await fetch('/api/oauth/start');
     const d = await r.json();
-    if (d.ok) {
-      msg.className = 'msg ok'; msg.textContent = '✅ Connected — loading dashboard…';
-      setTimeout(() => location.reload(), 600);
-    } else {
-      msg.className = 'msg err'; msg.textContent = d.error || 'Connection failed.';
+    if (!d.url) throw new Error('no oauth url');
+    // open Railway's official page in a NEW tab
+    const win = window.open(d.url, '_blank', 'noopener');
+    if (!win) {
+      // popup blocked — fall back to direct navigation
+      location.href = d.url;
+      return;
     }
+    msg.className = 'msg'; msg.textContent = 'Waiting for you to approve in the Railway tab…';
+    // poll until the token lands, then reload into the dashboard
+    const t0 = Date.now();
+    const iv = setInterval(async () => {
+      try {
+        const a = await fetch('/api/auth');
+        const s = await a.json();
+        if (s.authenticated) {
+          clearInterval(iv);
+          msg.className = 'msg ok'; msg.textContent = '✅ Connected! Loading dashboard…';
+          setTimeout(() => location.reload(), 500);
+        } else if (Date.now() - t0 > 180000) {
+          clearInterval(iv);
+          msg.className = 'msg err';
+          msg.textContent = 'Timed out. Try again.';
+          btn.disabled = false;
+          lbl.textContent = 'Connect with Railway';
+        }
+      } catch(e) { /* server restarting — keep polling */ }
+    }, 1200);
   } catch(e) {
     msg.className = 'msg err'; msg.textContent = 'error: ' + e;
+    btn.disabled = false;
+    lbl.textContent = 'Connect with Railway';
   }
 });
-
-ta.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
 </script>
 </body>
 </html>

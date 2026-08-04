@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>9Router Manager</title>
+<title>9Railway Manager</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <style>
   :root {
@@ -118,7 +118,7 @@
   <header>
     <div class="logo">🚀</div>
     <div>
-      <h1>9Router Manager</h1>
+      <h1>9Railway</h1>
       <div class="sub">Self-hosted AI gateway on Railway — deploy, manage, test</div>
     </div>
   </header>
@@ -177,7 +177,7 @@ function nuke() {
   if (confirm('☢ NUKE deletes the ENTIRE project (all services, volumes, data).\n\nContinue?')) cmd(['nuke']);
 }
 async function logout() {
-  if (!confirm('Log out of 9railway? (Railway token removed)')) return;
+  if (!confirm('Log out of 9Railway? (Railway token removed)')) return;
   await fetch('/api/logout', { method: 'POST' });
   location.reload();
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-9router.py — cross-platform CLI for managing 9Router services on Railway.
+9router.py — cross-platform CLI for managing 9Router services on Railway (9Railway).
 
 Works identically on Windows, Linux, and macOS (needs Python 3.8+).
 
@@ -308,7 +308,7 @@ def configure_service(project_id: str, service_name: str, password: str) -> bool
     # combo
     http_json(f"{base}/api/combos", "POST", {"name": combo, "models": [model]}, cookie)
     # api key
-    code, text = http_json(f"{base}/api/keys", "POST", {"name": f"9router-{service_name}"}, cookie)
+    code, text = http_json(f"{base}/api/keys", "POST", {"name": "key"}, cookie)
     api_key = ""
     if code in (200, 201):
         try:
