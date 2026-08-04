@@ -183,12 +183,9 @@ railway-9router-cli/
 
 ---
 
-## Roadmap
+## References
 
-- [x] Modular Python CLI core
-- [x] Interactive terminal menu (TUI)
-- [x] Local web dashboard
-- [x] Polished web UI (external HTML, dark theme)
-- [ ] GitHub Actions CI (lint + smoke test)
-- [ ] Packaging via `pip install`
-- [ ] Multi-project support
+- [9Router](https://github.com/decolua/9router) — the self-hosted AI gateway this tool deploys
+- [Railway](https://railway.com) — deployment platform
+- [Railway CLI](https://docs.railway.com/reference/cli) — the CLI this tool wraps
+- [Railway Public API](https://docs.railway.com/reference/public-api) — GraphQL API docs
