@@ -304,7 +304,65 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": ok, "output": output})
             return
 
+        # Real-time streaming output for long commands (deploy/up/sync)
+        if parsed.path == "/api/run/stream":
+            qs = urlparse.parse_qs(parsed.query)
+            raw = qs.get("args", ["[]"])[0]
+            try:
+                args = json.loads(raw)
+                if not isinstance(args, list):
+                    raise ValueError
+            except Exception:
+                self._json(400, {"ok": False, "output": "bad args"})
+                return
+            self._stream_cmd(args)
+            return
+
         self._json(404, {"ok": False, "output": "not found"})
+
+    def _stream_cmd(self, args, timeout=1800):
+        """Run a core command, streaming each output line as an SSE event."""
+        _refresh_stale_token()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        def _send(event: str, data: str):
+            safe = data.replace("\n", "\\n").replace("\r", "")
+            try:
+                self.wfile.write(f"event: {event}\ndata: {safe}\n\n".encode())
+                self.wfile.flush()
+            except Exception:
+                pass
+
+        def _emit(line: str):
+            line = line.rstrip("\n").rstrip("\r")
+            if not line:
+                return
+            if "✅" in line or "ready:" in line:
+                _send("done", line)
+            elif "⚠" in line or "❌" in line or "error" in line.lower():
+                _send("warn", line)
+            else:
+                _send("step", line)
+
+        _send("start", f"python 9router.py {' '.join(args)}")
+        try:
+            p = subprocess.Popen(
+                [sys.executable, str(CORE), *args],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
+                cwd=str(DIR), bufsize=1,
+            )
+            for line in p.stdout:
+                _emit(line)
+                # surface the output in the console panel too
+            p.wait()
+            _send("exit", f"exit code {p.returncode}")
+        except Exception as e:
+            _send("error", str(e))
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)

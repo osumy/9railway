@@ -160,17 +160,54 @@ async function cmd(args) {
   spin.innerHTML = '<span class="spinner"></span>running';
   pre.className = '';
   pre.textContent = '';
+
+  // Long-running commands stream live progress; quick ones just await.
+  const LONG = ['up', 'sync'];
+  if (!LONG.includes(args[0])) {
+    try {
+      const r = await fetch('/api/run?args=' + encodeURIComponent(JSON.stringify(args)));
+      const d = await r.json();
+      pre.textContent = d.output || '(no output)';
+      pre.className = d.ok ? 'ok' : 'err';
+    } catch(e) {
+      pre.textContent = 'fetch error: ' + e;
+      pre.className = 'err';
+    }
+    spin.innerHTML = '';
+    loadServices(false);
+    return;
+  }
+
+  // Streaming path
   try {
-    const r = await fetch('/api/run?args=' + encodeURIComponent(JSON.stringify(args)));
-    const d = await r.json();
-    pre.textContent = d.output || '(no output)';
-    pre.className = d.ok ? 'ok' : 'err';
+    const res = await fetch('/api/run/stream?args=' + encodeURIComponent(JSON.stringify(args)));
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      // parse SSE blocks
+      const blocks = buf.split('\n\n');
+      buf = blocks.pop();
+      for (const blk of blocks) {
+        const ev = (blk.match(/^event: (.+)$/m) || [])[1] || 'step';
+        const dt = (blk.match(/^data: (.+)$/m) || [])[1] || '';
+        if (ev !== 'start') {
+          const line = dt.replace(/\\n/g, '\n');
+          if (line) pre.textContent += line + '\n';
+          pre.scrollTop = pre.scrollHeight;
+        }
+      }
+    }
+    pre.className = 'ok';
   } catch(e) {
-    pre.textContent = 'fetch error: ' + e;
+    pre.textContent = 'stream error: ' + e;
     pre.className = 'err';
   }
   spin.innerHTML = '';
-  loadServices();
+  loadServices(true);
 }
 function num() { return document.getElementById('ncount').value || '1'; }
 function nuke() {
