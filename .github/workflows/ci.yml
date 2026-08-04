@@ -34,10 +34,12 @@ jobs:
         run: |
           python 9router-web.py --port 8989 &
           sleep 3
-          # no token → login page
-          curl -sf http://localhost:8989/ | grep -q "railway.com/account/tokens"
+          # no token → login page with the Connect button
+          curl -sf http://localhost:8989/ | grep -q "Connect with Railway"
           # /api/auth says unauthenticated
           curl -sf http://localhost:8989/api/auth | grep -q '"authenticated": false'
+          # /api/oauth/start returns a backboard auth URL with prompt=consent
+          curl -sf http://localhost:8989/api/oauth/start | grep -q "backboard.railway.com/oauth/auth" &
           # /api/state is protected (401)
           curl -s -o /dev/null -w "%{http_code}" http://localhost:8989/api/state | grep -q "401"
           kill %1
