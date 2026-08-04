@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9Router Manager</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+<style>
+  :root {
+    --bg: #0a0c12;
+    --card: #12151f;
+    --border: #232a3d;
+    --border-hover: #3b4a70;
+    --text: #e8ecf4;
+    --muted: #8b93a7;
+    --accent: #6c8cff;
+    --accent2: #9db4ff;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --radius: 14px;
+    --glow: 0 0 24px rgba(108,140,255,.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background:
+      radial-gradient(1200px 500px at 20% -10%, rgba(108,140,255,.10), transparent 60%),
+      radial-gradient(900px 400px at 90% 110%, rgba(74,222,128,.06), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 28px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+
+  header { display:flex; align-items:center; gap:14px; margin-bottom:6px; }
+  .logo {
+    width:44px; height:44px; border-radius:12px;
+    background: linear-gradient(135deg, #6c8cff, #9d5cff);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; box-shadow: var(--glow);
+  }
+  h1 { font-size:22px; letter-spacing:.2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:24px; }
+
+  .btnrow { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+  button {
+    background: var(--card); color:var(--text);
+    border:1px solid var(--border); border-radius:10px;
+    padding:9px 15px; font-size:13px; cursor:pointer;
+    transition: all .15s ease;
+  }
+  button:hover { border-color: var(--border-hover); transform: translateY(-1px); box-shadow: var(--glow); }
+  button:active { transform: translateY(0); }
+  button.primary { background: linear-gradient(135deg, #6c8cff, #5a6ff0); border:none; font-weight:600; }
+  button.primary:hover { filter: brightness(1.1); }
+  button.danger { border-color:#7a2e33; color:var(--red); }
+  button.danger:hover { background:#2a1518; border-color:#a03a41; }
+  button.small { padding:6px 10px; font-size:12px; }
+
+  .toolbar {
+    display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px 18px; margin-bottom:22px;
+  }
+  label { font-size:11px; color:var(--muted); display:block; margin-bottom:5px; text-transform:uppercase; letter-spacing:.6px; }
+  input, select {
+    background:#0b0e16; border:1px solid var(--border); border-radius:8px;
+    padding:8px 12px; color:var(--text); font-size:13px; outline:none;
+  }
+  input:focus, select:focus { border-color:var(--accent); }
+  .num { width:70px; }
+
+  h2 { font-size:15px; font-weight:600; margin:4px 0 12px; color:var(--accent2); }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:14px; margin-bottom:26px; }
+  .card {
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px; transition: border-color .15s ease, transform .15s ease;
+  }
+  .card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+  .card-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .card h3 { font-size:14px; font-weight:600; }
+  .badge {
+    font-size:10px; padding:3px 8px; border-radius:20px; letter-spacing:.4px;
+    background:rgba(74,222,128,.12); color:var(--green); border:1px solid rgba(74,222,128,.3);
+  }
+  .kv { font-size:13px; line-height:1.6; }
+  .kv .lbl { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; margin-top:10px; }
+  .kv .lbl:first-child { margin-top:0; }
+  .key, .mono { font-family: 'Cascadia Code', 'Consolas', monospace; font-size:12px; color:var(--green); word-break: break-all; }
+  .model { font-family: 'Cascadia Code', 'Consolas', monospace; font-size:12px; color:var(--amber); }
+  .combo { font-family: 'Cascadia Code', 'Consolas', monospace; font-size:12px; color:var(--accent2); }
+  .card-actions { display:flex; gap:6px; margin-top:14px; }
+
+  .panel {
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+    margin-bottom:20px; overflow:hidden;
+  }
+  .panel-head {
+    padding:10px 16px; font-size:12px; color:var(--muted);
+    border-bottom:1px solid var(--border); display:flex; justify-content:space-between;
+  }
+  pre {
+    padding:14px 16px; font-size:12px; overflow:auto; max-height:340px;
+    white-space:pre-wrap; word-break:break-word; font-family:'Cascadia Code','Consolas',monospace;
+    color:var(--text);
+  }
+  pre.ok { color:var(--green); }
+  pre.err { color:var(--red); }
+  .spinner { display:inline-block; width:12px; height:12px; border:2px solid var(--border-hover); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-2px; margin-right:6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty { color:var(--muted); font-size:13px; padding:20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🚀</div>
+    <div>
+      <h1>9Router Manager</h1>
+      <div class="sub">Self-hosted AI gateway on Railway — deploy, manage, test</div>
+    </div>
+  </header>
+
+  <div class="btnrow">
+    <button class="primary" onclick="cmd(['up', num()])">▲ Deploy N</button>
+    <button onclick="cmd(['list'])">Refresh</button>
+    <button onclick="cmd(['status'])">Status</button>
+    <button onclick="cmd(['keys'])">Keys</button>
+    <button onclick="cmd(['sync'])">Sync all</button>
+    <button onclick="cmd(['clean'])">Clean volumes</button>
+    <button class="danger" onclick="nuke()">☢ Nuke</button>
+  </div>
+
+  <div class="toolbar">
+    <div>
+      <label>Services to deploy</label>
+      <input id="ncount" class="num" type="number" value="1" min="1" max="5">
+    </div>
+  </div>
+
+  <h2>▸ Services</h2>
+  <div id="services" class="grid"></div>
+
+  <h2>▸ Output</h2>
+  <div class="panel">
+    <div class="panel-head"><span id="cmdlabel">console</span><span id="spinner"></span></div>
+    <pre id="output">(run a command to see output)</pre>
+  </div>
+</div>
+
+<script>
+async function cmd(args) {
+  const pre = document.getElementById('output');
+  const lbl = document.getElementById('cmdlabel');
+  const spin = document.getElementById('spinner');
+  lbl.textContent = 'python 9router.py ' + args.join(' ');
+  spin.innerHTML = '<span class="spinner"></span>running';
+  pre.className = '';
+  pre.textContent = '';
+  try {
+    const r = await fetch('/api/run?args=' + encodeURIComponent(JSON.stringify(args)));
+    const d = await r.json();
+    pre.textContent = d.output || '(no output)';
+    pre.className = d.ok ? 'ok' : 'err';
+  } catch(e) {
+    pre.textContent = 'fetch error: ' + e;
+    pre.className = 'err';
+  }
+  spin.innerHTML = '';
+  loadServices();
+}
+function num() { return document.getElementById('ncount').value || '1'; }
+function nuke() {
+  if (confirm('☢ NUKE deletes the ENTIRE project (all services, volumes, data).\n\nContinue?')) cmd(['nuke']);
+}
+async function loadServices() {
+  try {
+    const r = await fetch('/api/state');
+    const d = await r.json();
+    const grid = document.getElementById('services');
+    const svcs = d.services || [];
+    if (!svcs.length) {
+      grid.innerHTML = '<div class="card"><h3>No services yet</h3><div class="empty">Deploy one above — everything is configured automatically.</div></div>';
+      return;
+    }
+    grid.innerHTML = svcs.map(s => `
+      <div class="card">
+        <div class="card-top">
+          <h3>${esc(s.service || '?')}</h3>
+          <span class="badge">● ONLINE</span>
+        </div>
+        <div class="kv">
+          <div class="lbl">Base URL</div>
+          <div class="key">${esc(s.url || '')}/v1</div>
+          <div class="lbl">API key</div>
+          <div class="key">${esc(s.api_key || '')}</div>
+          <div class="lbl">Combo</div>
+          <div class="combo">${esc(s.combo || '')}</div>
+          <div class="lbl">Model</div>
+          <div class="model">${esc(s.model || '')}</div>
+        </div>
+        <div class="card-actions">
+          <button class="small primary" onclick="cmd(['test','${s.service}'])">▶ Test</button>
+          <button class="small danger" onclick="if(confirm('Delete ${s.service}?')) cmd(['down','${s.service}'])">✕ Delete</button>
+        </div>
+      </div>`).join('');
+  } catch(e) { console.error(e); }
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+loadServices();
+setInterval(loadServices, 30000);
+</script>
+</body>
+</html>
