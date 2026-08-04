@@ -114,11 +114,16 @@ btn.addEventListener('click', async () => {
     const r = await fetch('/api/oauth/start');
     const d = await r.json();
     if (!d.url) throw new Error('no oauth url');
-    // open Railway's official page in a NEW tab
-    const win = window.open(d.url, '_blank', 'noopener');
+    // Open Railway's official page in a NEW tab — never navigate the login page itself.
+    // Saving the opener reference lets us detect when the flow completes.
+    const win = window.open(d.url, '_blank');
     if (!win) {
-      // popup blocked — fall back to direct navigation
-      location.href = d.url;
+      // Popup blocked — show instruction instead of navigating away (keeps the
+      // login page in place so /api/auth polling can still detect the token).
+      msg.className = 'msg err';
+      msg.textContent = 'Popup blocked. Allow popups, then click Connect again.';
+      btn.disabled = false;
+      lbl.textContent = 'Connect with Railway';
       return;
     }
     msg.className = 'msg'; msg.textContent = 'Waiting for you to approve in the Railway tab…';
