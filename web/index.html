@@ -125,7 +125,7 @@
 
   <div class="btnrow">
     <button class="primary" onclick="cmd(['up', num()])">▲ Deploy N</button>
-    <button onclick="cmd(['list'])">Refresh</button>
+    <button onclick="refreshAll()">⟳ Refresh</button>
     <button onclick="cmd(['status'])">Status</button>
     <button onclick="cmd(['keys'])">Keys</button>
     <button onclick="cmd(['sync'])">Sync all</button>
@@ -210,6 +210,17 @@ async function cmd(args) {
   loadServices(true);
 }
 function num() { return document.getElementById('ncount').value || '1'; }
+async function refreshAll() {
+  // A true refresh = sync with Railway (reads live services) then update state.
+  // Note: sync only picks up services already configured; it re-keys them.
+  const spin = document.getElementById('spinner');
+  spin.innerHTML = '<span class="spinner"></span>syncing…';
+  try {
+    await fetch('/api/run?args=' + encodeURIComponent(JSON.stringify(['sync'])));
+  } catch(e) { /* ignore */ }
+  spin.innerHTML = '';
+  await loadServices(false);
+}
 function nuke() {
   if (confirm('☢ NUKE deletes the ENTIRE project (all services, volumes, data).\n\nContinue?')) cmd(['nuke']);
 }
