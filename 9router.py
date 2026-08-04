@@ -282,6 +282,12 @@ def delete_volume(name: str):
 # ---------------------------------------------------------------------------
 # Core: configure one service (login → model → combo → key → save)
 # ---------------------------------------------------------------------------
+FLUSH = {"flush": True}  # keep subprocess output flowing to realtime views
+
+def log_step(msg: str):
+    """Print a live, unbuffered step line (works in subprocess/realtime)."""
+    print(msg, **FLUSH)
+
 def configure_service(project_id: str, service_name: str, password: str) -> bool:
     settings = load_settings()
     combo = settings["combo_name"]
@@ -293,8 +299,10 @@ def configure_service(project_id: str, service_name: str, password: str) -> bool
         eprint(f"   ⚠️  no domain for {service_name}")
         return False
 
-    print(f"   → configure {service_name} ({domain})")
+    log_step(f"   → configuring {service_name} ({domain})")
 
+    # Log into the service dashboard, capture the session cookie
+    log_step(f"   · [{service_name}] logging in…")
     cookie = login_get_cookie(domain, password)
     if not cookie:
         eprint(f"   ⚠️  login failed for {service_name}")
@@ -302,12 +310,20 @@ def configure_service(project_id: str, service_name: str, password: str) -> bool
 
     base = f"https://{domain}"
 
-    # add model
-    http_json(f"{base}/api/models/custom", "POST",
-              {"providerAlias": alias, "id": model_id, "type": "llm"}, cookie)
-    # combo
-    http_json(f"{base}/api/combos", "POST", {"name": combo, "models": [model]}, cookie)
+    # add custom model
+    log_step(f"   · [{service_name}] adding model {model}…")
+    c, t = http_json(f"{base}/api/models/custom", "POST",
+                     {"providerAlias": alias, "id": model_id, "type": "llm"}, cookie)
+    log_step(f"   · [{service_name}] model added ({'existing' if c == 400 else c})")
+
+    # create combo
+    log_step(f"   · [{service_name}] creating combo '{combo}'…")
+    c2, t2 = http_json(f"{base}/api/combos", "POST",
+                       {"name": combo, "models": [model]}, cookie)
+    log_step(f"   · [{service_name}] combo {'already exists' if c2 == 400 else 'ready'}")
+
     # api key
+    log_step(f"   · [{service_name}] creating API key…")
     code, text = http_json(f"{base}/api/keys", "POST", {"name": "key"}, cookie)
     api_key = ""
     if code in (200, 201):
@@ -364,9 +380,10 @@ def cmd_up(n: int):
         fail("could not create/find project")
         sys.exit(1)
 
-    print(f"\n   deploying {n} service(s)...")
+    log_step(f"\n   deploying {n} service(s)...")
     for i in range(1, n + 1):
-        print(f"\n── service {i}/{n} ──")
+        log_step(f"\n── service {i}/{n} ──")
+        log_step(f"   · deploying template on Railway…")
         out = rail("deploy", "--template", "9router",
                    "-v", f"INITIAL_PASSWORD={password}",
                    "-v", "DATA_DIR=/app/data", check=False)
@@ -380,22 +397,27 @@ def cmd_up(n: int):
 
         # find the new service
         svc = ""
-        for _ in range(9):
+        tries = 0
+        while not svc and tries < 9:
+            tries += 1
+            log_step(f"   · waiting for service to appear ({tries}/9)…")
             time.sleep(10)
             svc = latest_9router_service(project_id)
-            if svc:
-                break
         if not svc:
             fail("could not find newly created service")
             continue
-        print(f"   service: {svc}")
+        log_step(f"   · service created: {svc}")
 
         # wait online + get domain
         domain = ""
-        for _ in range(12):
+        tries = 0
+        while tries < 12:
+            tries += 1
             domain = service_domain(project_id, svc)
             if domain and wait_online(domain, 1):
+                log_step(f"   · {svc} is online ({domain})")
                 break
+            log_step(f"   · waiting for {svc} to come online ({tries}/12)…")
             time.sleep(10)
         if not domain:
             fail(f"no domain for {svc}")
@@ -412,7 +434,7 @@ def cmd_sync():
     if not project_id:
         fail(f"project '{PROJECT_NAME}' not found. Run: python 9router.py up")
         return
-    print(f"   configuring existing services in {project_id}...")
+    log_step(f"   configuring existing services in {project_id}...")
     for sid, name in list_services(project_id):
         configure_service(project_id, name, password)
 
