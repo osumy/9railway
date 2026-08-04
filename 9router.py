@@ -100,6 +100,19 @@ def save_state(s: dict):
 # ---------------------------------------------------------------------------
 # Token handling — cross-platform
 # ---------------------------------------------------------------------------
+def has_token() -> bool:
+    """True if a usable token is available (file or railway config)."""
+    if TOKEN_FILE.exists() and TOKEN_FILE.read_text(encoding="utf-8").strip():
+        return True
+    if RAILWAY_CONFIG.exists():
+        try:
+            cfg = json.loads(RAILWAY_CONFIG.read_text(encoding="utf-8"))
+            if (cfg.get("user") or {}).get("accessToken", "").strip():
+                return True
+        except Exception:
+            pass
+    return False
+
 def get_token() -> str:
     """Return a usable Railway token: .railway-token file, or the accessToken
     stored by `railway login` in ~/.railway/config.json."""
@@ -116,7 +129,7 @@ def get_token() -> str:
         except Exception:
             pass
     eprint("❌ No Railway token found.")
-    eprint("   Run `railway login` once, or put your token in .railway-token")
+    eprint("   Run `python 9router.py login` once, or put your token in .railway-token")
     sys.exit(1)
 
 # ---------------------------------------------------------------------------
@@ -543,13 +556,53 @@ def cmd_test(name: str):
     except Exception as e:
         fail(f"{target} error: {e}")
 
+def cmd_login():
+    """Login: store the Railway access token into .railway-token.
+    Prompts for a token (or reads from ~/.railway/config.json if `railway login` ran)."""
+    # If railway CLI already has a session, use its accessToken
+    if not TOKEN_FILE.exists() and RAILWAY_CONFIG.exists():
+        try:
+            cfg = json.loads(RAILWAY_CONFIG.read_text(encoding="utf-8"))
+            tok = (cfg.get("user") or {}).get("accessToken", "").strip()
+            if tok:
+                TOKEN_FILE.write_text(tok, encoding="utf-8")
+                ok("logged in (token copied from `railway login` config)")
+                return
+        except Exception:
+            pass
+
+    print("  Paste your Railway access token:")
+    print("  (Railway → Account → Tokens → Generate → paste here)")
+    tok = input("  Token: ").strip()
+    if not tok:
+        fail("no token given")
+        return
+    TOKEN_FILE.write_text(tok, encoding="utf-8")
+    ok("token saved to .railway-token")
+
+def cmd_logout():
+    """Logout: remove the stored .railway-token file."""
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
+        ok("logged out (.railway-token removed)")
+        if RAILWAY_CONFIG.exists():
+            print("   note: ~/.railway/config.json still holds the `railway login` session")
+            print("         (use `railway logout` to clear that too)")
+    else:
+        print("   (no .railway-token file — nothing to do)")
+    if RAILWAY_CONFIG.exists():
+        print("   run `railway logout` to also clear the CLI session if desired")
+
 def cmd_token():
+    if not has_token():
+        print("  No token available. Run:  python 9router.py login")
+        return
     tok = get_token()
     masked = tok[:8] + "..." + tok[-4:] if len(tok) > 12 else "***"
+    src = "file: .railway-token" if TOKEN_FILE.exists() else "config: ~/.railway/config.json"
     print(f"  Railway token: {masked}")
-    print(f"  source: {TOKEN_FILE if TOKEN_FILE.exists() else RAILWAY_CONFIG}")
-    print("  To refresh: run `railway login`, then:")
-    print("    python -c \"import json,pathlib; print(json.load(open(str(pathlib.Path.home()/'.railway'/'config.json')))['user']['accessToken'])\" > .railway-token")
+    print(f"  source: {src}")
+    print("  To refresh: run `railway login`, then `python 9router.py login`")
 
 def cmd_reset():
     save_state({"services": []})
@@ -577,6 +630,14 @@ def main():
             cmd_keys()
         elif cmd == "config":
             cmd_config()
+        return
+
+    # login/logout handle the token itself
+    if cmd == "login":
+        cmd_login()
+        return
+    if cmd == "logout":
+        cmd_logout()
         return
 
     # make token available to railway subprocesses (cross-platform)
@@ -609,6 +670,8 @@ def main():
         cmd_token()
     elif cmd == "reset":
         cmd_reset()
+    elif cmd in ("login", "logout"):
+        pass  # handled above
     else:
         cmd_help()
 

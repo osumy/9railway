@@ -22,6 +22,7 @@ from pathlib import Path
 DIR = Path(__file__).resolve().parent
 CORE = DIR / "9router.py"
 WEB_HTML = DIR / "web" / "index.html"
+LOGIN_HTML = DIR / "web" / "login.html"
 PORT = 8989
 
 # ---------------------------------------------------------------------------
@@ -64,23 +65,62 @@ def read_settings():
 
 
 # ---------------------------------------------------------------------------
+# Auth — token in .railway-token (same as the core CLI)
+# ---------------------------------------------------------------------------
+TOKEN_FILE = DIR / ".railway-token"
+
+def has_token() -> bool:
+    if TOKEN_FILE.exists() and TOKEN_FILE.read_text(encoding="utf-8").strip():
+        return True
+    return False
+
+def save_token(tok: str) -> bool:
+    tok = tok.strip()
+    if not tok:
+        return False
+    TOKEN_FILE.write_text(tok, encoding="utf-8")
+    return True
+
+def delete_token():
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
+
+
+# ---------------------------------------------------------------------------
 # HTTP server
 # ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
 
-        if parsed.path == "/" or parsed.path == "/index.html":
-            try:
-                html = WEB_HTML.read_text(encoding="utf-8")
-            except Exception:
-                html = "<h1>web/index.html missing</h1>"
+        # Root: if no token → login page, else dashboard
+        if parsed.path in ("/", "/index.html"):
+            if has_token():
+                try:
+                    html = WEB_HTML.read_text(encoding="utf-8")
+                except Exception:
+                    html = "<h1>web/index.html missing</h1>"
+            else:
+                try:
+                    html = LOGIN_HTML.read_text(encoding="utf-8")
+                except Exception:
+                    html = "<h1>web/login.html missing</h1>"
             body = html.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        # Auth status
+        if parsed.path == "/api/auth":
+            self._json(200, {"authenticated": has_token()})
+            return
+
+        # Protected endpoints require a token
+        if parsed.path in ("/api/state", "/api/run") and not has_token():
+            self._json(401, {"ok": False, "output": "not authenticated"})
             return
 
         if parsed.path == "/api/state":
@@ -104,6 +144,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
             ok, output = run_cmd(args)
             self._json(200, {"ok": ok, "output": output})
+            return
+
+        self._json(404, {"ok": False, "output": "not found"})
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path == "/api/login":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length).decode("utf-8", "replace"))
+                tok = body.get("token", "")
+            except Exception:
+                self._json(400, {"ok": False, "error": "bad body"})
+                return
+            if save_token(tok):
+                self._json(200, {"ok": True, "authenticated": True})
+            else:
+                self._json(400, {"ok": False, "error": "empty token"})
+            return
+
+        if parsed.path == "/api/logout":
+            delete_token()
+            self._json(200, {"ok": True, "authenticated": False})
             return
 
         self._json(404, {"ok": False, "output": "not found"})

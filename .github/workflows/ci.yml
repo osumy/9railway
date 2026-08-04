@@ -20,24 +20,25 @@ jobs:
 
       - name: Syntax check all Python files
         run: |
-          python -m py_compile 9router.py 9router-tui.py 9router-web.py
+          python -m py_compile 9router.py 9router-web.py
 
-      - name: CLI smoke test (help)
+      - name: CLI smoke test (no-token commands)
         run: |
           python 9router.py help > /dev/null
           python 9router.py reset
+          python 9router.py list > /dev/null
+          python 9router.py config > /dev/null
           echo "CLI OK"
 
-      - name: TUI smoke test (exit immediately)
-        run: |
-          printf '0\n' | python 9router-tui.py > /dev/null
-          echo "TUI OK"
-
-      - name: Web server smoke test (start + fetch + stop)
+      - name: Web server smoke test (login page + auth + protected)
         run: |
           python 9router-web.py --port 8989 &
           sleep 3
-          curl -sf http://localhost:8989/ | grep -q "9Router Manager"
-          curl -sf http://localhost:8989/api/state > /dev/null
+          # no token → login page
+          curl -sf http://localhost:8989/ | grep -q "railway.com/account/tokens"
+          # /api/auth says unauthenticated
+          curl -sf http://localhost:8989/api/auth | grep -q '"authenticated": false'
+          # /api/state is protected (401)
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:8989/api/state | grep -q "401"
           kill %1
           echo "WEB OK"

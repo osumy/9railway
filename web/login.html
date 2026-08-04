@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9railway — Login</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+<style>
+  :root {
+    --bg: #0a0c12;
+    --card: #12151f;
+    --border: #232a3d;
+    --border-hover: #3b4a70;
+    --text: #e8ecf4;
+    --muted: #8b93a7;
+    --accent: #6c8cff;
+    --accent2: #9db4ff;
+    --green: #4ade80;
+    --red: #f87171;
+    --radius: 14px;
+    --glow: 0 0 24px rgba(108,140,255,.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 500px at 20% -10%, rgba(108,140,255,.10), transparent 60%),
+      radial-gradient(900px 400px at 90% 110%, rgba(74,222,128,.06), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px;
+    width: 100%; max-width: 420px;
+    box-shadow: var(--glow);
+  }
+  .logo {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: linear-gradient(135deg, #6c8cff, #9d5cff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; margin-bottom: 18px;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; line-height: 1.5; }
+  label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .6px; }
+  textarea, input {
+    width: 100%;
+    background: #0b0e16; border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; color: var(--text); font-size: 13px; outline: none;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    resize: vertical;
+  }
+  textarea:focus, input:focus { border-color: var(--accent); }
+  .btn {
+    width: 100%; margin-top: 16px;
+    background: linear-gradient(135deg, #6c8cff, #5a6ff0);
+    color: white; border: none; border-radius: 10px;
+    padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: filter .15s ease;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .hint { margin-top: 16px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .hint a { color: var(--accent2); text-decoration: none; }
+  .hint a:hover { text-decoration: underline; }
+  .msg { margin-top: 12px; font-size: 13px; min-height: 18px; }
+  .msg.ok { color: var(--green); }
+  .msg.err { color: var(--red); }
+  .steps { margin-top: 8px; font-size: 12px; color: var(--muted); line-height: 1.7; padding-left: 18px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🚀</div>
+  <h1>9railway</h1>
+  <div class="sub">Connect your Railway account to manage 9Router services.</div>
+
+  <label>How to get a token</label>
+  <ol class="steps">
+    <li>Open <a href="https://railway.com/account/tokens" target="_blank" rel="noopener">railway.com/account/tokens</a></li>
+    <li>Click <b>Generate Token</b> → give it a name → <b>Create</b></li>
+    <li>Copy the token and paste it below</li>
+  </ol>
+
+  <textarea id="token" rows="3" placeholder="paste railway token here…"></textarea>
+  <button class="btn" id="connect">Connect</button>
+
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+const btn = document.getElementById('connect');
+const msg = document.getElementById('msg');
+const ta = document.getElementById('token');
+
+btn.addEventListener('click', async () => {
+  const token = ta.value.trim();
+  if (!token) { msg.className = 'msg err'; msg.textContent = 'Paste a token first.'; return; }
+  msg.className = 'msg'; msg.textContent = 'Connecting…';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.className = 'msg ok'; msg.textContent = '✅ Connected — loading dashboard…';
+      setTimeout(() => location.reload(), 600);
+    } else {
+      msg.className = 'msg err'; msg.textContent = d.error || 'Connection failed.';
+    }
+  } catch(e) {
+    msg.className = 'msg err'; msg.textContent = 'error: ' + e;
+  }
+});
+
+ta.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+</script>
+</body>
+</html>
