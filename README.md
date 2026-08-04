@@ -1,4 +1,4 @@
-# railway-9router-cli
+# 9railway
 
 **Auto-deploy and manage 9Router — the self-hosted AI gateway — on Railway, from your terminal or browser.**
 
@@ -168,7 +168,7 @@ All verified end-to-end against live services (`cost: 0` replies).
 ## Project layout
 
 ```
-railway-9router-cli/
+9railway/
 ├── 9router.py        # core CLI (all commands, cross-platform)
 ├── 9router-tui.py    # interactive terminal menu
 ├── 9router-web.py    # local web dashboard server
