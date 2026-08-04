@@ -14,8 +14,10 @@ import json
 import os
 import subprocess
 import sys
-import threading
-import urllib.parse
+import time
+import urllib.parse as urlparse
+import urllib.request as urlreq
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -98,13 +100,10 @@ def delete_token():
 import base64
 import hashlib
 import secrets
-import urllib.parse as urlparse
-import urllib.request as urlreq
 
-# Per-session OAuth state (regenerated each start, or on demand)
-_pkce_verifier = None
-_pkce_challenge = None
-_oauth_state = None
+# Per-session OAuth state. Each start_oauth() creates a fresh one so that
+# multiple parallel flows (or stale tabs) don't trample each other.
+_oauth_sessions = {}  # state -> {verifier, created}
 
 
 def _b64url(data: bytes) -> str:
@@ -113,43 +112,56 @@ def _b64url(data: bytes) -> str:
 
 def start_oauth() -> dict:
     """Generate PKCE pair + state, return the auth URL the browser should open."""
-    global _pkce_verifier, _pkce_challenge, _oauth_state
-    _pkce_verifier = _b64url(secrets.token_bytes(48))
-    _pkce_challenge = _b64url(hashlib.sha256(_pkce_verifier.encode()).digest())
-    _oauth_state = secrets.token_urlsafe(16)
+    verifier = _b64url(secrets.token_bytes(48))
+    challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
+    state = secrets.token_urlsafe(16)
+    _oauth_sessions[state] = {"verifier": verifier, "created": time.time()}
+    # cap session stash to avoid unbounded growth
+    if len(_oauth_sessions) > 20:
+        oldest = min(_oauth_sessions, key=lambda k: _oauth_sessions[k]["created"])
+        _oauth_sessions.pop(oldest, None)
 
     params = {
         "response_type": "code",
         "client_id": OAUTH_CLIENT_ID,
         "redirect_uri": f"http://127.0.0.1:{PORT}/callback",
         "scope": OAUTH_SCOPES,
-        "code_challenge": _pkce_challenge,
+        "code_challenge": challenge,
         "code_challenge_method": "S256",
-        "state": _oauth_state,
+        "state": state,
         # Required by Railway's Ory Hydra: force the consent screen so the
         # interaction session matches the (existing) authentication session.
         "prompt": "consent",
         "cli_caller": "tty",
     }
     url = OAUTH_AUTH_URL + "?" + urlparse.urlencode(params)
-    return {"url": url, "state": _oauth_state}
+    return {"url": url, "state": state}
 
 
 def exchange_code(code: str, state: str) -> str:
     """Exchange the authorization code for an access token (PKCE)."""
-    if state != _oauth_state:
-        raise ValueError("state mismatch — possible CSRF")
-    if not _pkce_verifier:
-        raise ValueError("no PKCE session started")
+    session = _oauth_sessions.get(state)
+    if not session:
+        raise ValueError("state unknown or expired — please retry")
+    _oauth_sessions.pop(state, None)  # one-shot
+    verifier = session["verifier"]
     form = urlparse.urlencode({
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": f"http://127.0.0.1:{PORT}/callback",
         "client_id": OAUTH_CLIENT_ID,
-        "code_verifier": _pkce_verifier,
+        "code_verifier": verifier,
     }).encode()
     req = urlreq.Request(OAUTH_TOKEN_URL, data=form, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    # Cloudflare blocks requests that look like bots (urllib's default
+    # python-urllib/3.x signature → error 1010). Send a real browser's
+    # User-Agent + Accept so the token exchange is accepted.
+    req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                 "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                 "Chrome/126.0 Safari/537.36")
+    req.add_header("Accept", "application/json, text/plain, */*")
+    req.add_header("Origin", f"http://127.0.0.1:{PORT}")
     try:
         with urlreq.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8", "replace"))
@@ -276,21 +288,6 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/logout":
             delete_token()
             self._json(200, {"ok": True, "authenticated": False})
-            return
-
-        # Keep the old paste-token endpoint as a fallback (harmless)
-        if parsed.path == "/api/login":
-            try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8", "replace"))
-                tok = body.get("token", "")
-            except Exception:
-                self._json(400, {"ok": False, "error": "bad body"})
-                return
-            if save_token(tok):
-                self._json(200, {"ok": True, "authenticated": True})
-            else:
-                self._json(400, {"ok": False, "error": "empty token"})
             return
 
         self._json(404, {"ok": False, "output": "not found"})

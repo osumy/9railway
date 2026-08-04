@@ -181,12 +181,22 @@ async function logout() {
   await fetch('/api/logout', { method: 'POST' });
   location.reload();
 }
-async function loadServices() {
+async function loadServices(autoSync = true) {
   try {
-    const r = await fetch('/api/state');
-    const d = await r.json();
+    let d = await (await fetch('/api/state')).json();
     const grid = document.getElementById('services');
-    const svcs = d.services || [];
+    let svcs = d.services || [];
+
+    // On first load after login, if state is empty because no sync has run,
+    // auto-run `sync` (reads live services from Railway) then re-fetch.
+    if (!svcs.length && autoSync) {
+      try {
+        await fetch('/api/run?args=' + encodeURIComponent(JSON.stringify(['sync'])));
+        d = await (await fetch('/api/state')).json();
+        svcs = d.services || [];
+      } catch(e) { /* sync failed — show empty state */ }
+    }
+
     if (!svcs.length) {
       grid.innerHTML = '<div class="card"><h3>No services yet</h3><div class="empty">Deploy one above — everything is configured automatically.</div></div>';
       return;
@@ -215,8 +225,9 @@ async function loadServices() {
   } catch(e) { console.error(e); }
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-loadServices();
-setInterval(loadServices, 30000);
+loadServices(true);
+// subsequent refreshes don't need to re-sync every time
+setInterval(() => loadServices(false), 60000);
 </script>
 </body>
 </html>
